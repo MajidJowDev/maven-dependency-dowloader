@@ -1,0 +1,54 @@
+name: Download Maven Dependencies
+
+on:
+  workflow_dispatch:
+    inputs:
+      pom_content:
+        description: 'Content of pom.xml file'
+        required: true
+        type: string
+      target_directory:
+        description: 'Directory to store dependencies'
+        required: false
+        default: '.github/dependencies'
+        type: string
+
+jobs:
+  download-dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create temporary pom.xml
+        run: |
+          cat > pom.xml << 'EOF'
+          ${{ inputs.pom_content }}
+          EOF
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      
+      - name: Create dependencies directory
+        run: mkdir -p ${{ inputs.target_directory }}
+      
+      - name: Download dependencies
+        run: |
+          mvn dependency:copy-dependencies \
+            -DoutputDirectory=${{ inputs.target_directory }} \
+            -DincludeScope=runtime \
+            -Dmdep.useRepositoryLayout=false
+      
+      - name: Commit dependencies
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add ${{ inputs.target_directory }}
+          git diff --staged --quiet || git commit -m "Add Maven dependencies to ${{ inputs.target_directory }}"
+          git push
