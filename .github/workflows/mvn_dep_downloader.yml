@@ -1,4 +1,4 @@
-name: Maven Dependency downloader
+name: Maven Dependency Downloader
 
 on:
   workflow_dispatch:
@@ -16,6 +16,9 @@ on:
 jobs:
   download-dependencies:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
     
     steps:
       - name: Checkout repository
@@ -40,29 +43,29 @@ jobs:
       
       - name: Download dependencies with repository structure
         run: |
-          # Download all dependencies to local Maven repository
-          mvn dependency:go-offline -DskipTests
+          echo "📥 Downloading dependencies with Maven repository layout..."
           
-          # Copy the entire local repository structure to target directory
-          # This preserves the .m2 folder structure with all files (.jar, .pom, .sha1, etc.)
-          cp -r ~/.m2/repository/* ${{ inputs.target_directory }}/
+          mvn dependency:copy-dependencies \
+            -DoutputDirectory=${{ inputs.target_directory }} \
+            -Dmdep.useRepositoryLayout=true \
+            -Dmdep.copyPom=true \
+            -Dmdep.addParentPoms=true \
+            -DincludeScope=runtime
           
-          echo "✅ Dependencies downloaded with full repository structure"
+          echo "✅ Dependencies downloaded with repository structure"
       
       - name: Install 7zip
         run: sudo apt-get update && sudo apt-get install -y p7zip-full
       
       - name: Create 7zip archive
         run: |
-          cd ${{ inputs.target_directory }}
-          7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on ../maven-dependencies.7z .
-          cd ..
+          7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on \
+            maven-dependencies.7z \
+            ${{ inputs.target_directory }}
           
-          # Get archive size
           archive_size=$(du -h maven-dependencies.7z | cut -f1)
           echo "📦 Archive created: maven-dependencies.7z (${archive_size})"
           
-          # Move archive to target directory
           mv maven-dependencies.7z ${{ inputs.target_directory }}/
       
       - name: Commit dependencies
@@ -70,5 +73,5 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add ${{ inputs.target_directory }}
-          git diff --staged --quiet || git commit -m "Add Maven dependencies archive to ${{ inputs.target_directory }} [skip ci]"
+          git diff --staged --quiet || git commit -m "Add Maven dependencies archive [skip ci]"
           git push
