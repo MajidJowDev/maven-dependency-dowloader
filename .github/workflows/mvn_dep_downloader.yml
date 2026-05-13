@@ -1,4 +1,4 @@
-name: Download Maven Dependencies
+name: Maven Dependency downloader
 
 on:
   workflow_dispatch:
@@ -38,17 +38,37 @@ jobs:
       - name: Create dependencies directory
         run: mkdir -p ${{ inputs.target_directory }}
       
-      - name: Download dependencies
+      - name: Download dependencies with repository structure
         run: |
-          mvn dependency:copy-dependencies \
-            -DoutputDirectory=${{ inputs.target_directory }} \
-            -DincludeScope=runtime \
-            -Dmdep.useRepositoryLayout=false
+          # Download all dependencies to local Maven repository
+          mvn dependency:go-offline -DskipTests
+          
+          # Copy the entire local repository structure to target directory
+          # This preserves the .m2 folder structure with all files (.jar, .pom, .sha1, etc.)
+          cp -r ~/.m2/repository/* ${{ inputs.target_directory }}/
+          
+          echo "✅ Dependencies downloaded with full repository structure"
+      
+      - name: Install 7zip
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full
+      
+      - name: Create 7zip archive
+        run: |
+          cd ${{ inputs.target_directory }}
+          7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on ../maven-dependencies.7z .
+          cd ..
+          
+          # Get archive size
+          archive_size=$(du -h maven-dependencies.7z | cut -f1)
+          echo "📦 Archive created: maven-dependencies.7z (${archive_size})"
+          
+          # Move archive to target directory
+          mv maven-dependencies.7z ${{ inputs.target_directory }}/
       
       - name: Commit dependencies
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add ${{ inputs.target_directory }}
-          git diff --staged --quiet || git commit -m "Add Maven dependencies to ${{ inputs.target_directory }}"
+          git diff --staged --quiet || git commit -m "Add Maven dependencies archive to ${{ inputs.target_directory }} [skip ci]"
           git push
