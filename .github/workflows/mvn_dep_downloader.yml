@@ -68,6 +68,13 @@ jobs:
           
           mv maven-dependencies.7z ${{ inputs.target_directory }}/
       
+      - name: Remove unzipped files
+        run: |
+          echo "🗑️ Removing unzipped dependency files..."
+          find ${{ inputs.target_directory }} -type f ! -name "*.7z" -delete
+          find ${{ inputs.target_directory }} -type d -empty -delete
+          echo "✅ Unzipped files removed, only archive remains"
+      
       - name: Commit dependencies
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
