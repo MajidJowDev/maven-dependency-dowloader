@@ -41,63 +41,48 @@ jobs:
       - name: Create dependencies directory
         run: mkdir -p ${{ inputs.target_directory }}
       
-      - name: Download all dependencies and plugins
+      - name: Download full offline Maven repository
         run: |
-          echo "📥 Downloading all dependencies, plugins, and metadata..."
+          echo "📥 Downloading all dependencies, plugins, plugin dependencies, parent POMs, and metadata..."
           
-          # Download all project dependencies with repository structure
-          mvn dependency:copy-dependencies \
-            -DoutputDirectory=${{ inputs.target_directory }} \
-            -Dmdep.useRepositoryLayout=true \
-            -Dmdep.copyPom=true \
-            -Dmdep.addParentPoms=true \
-            -DincludeScope=compile
-          
-          echo "✅ Project dependencies downloaded"
-          
-          # Download all plugins and their dependencies
-          mvn dependency:resolve-plugins \
-            -Dmdep.outputDirectory=${{ inputs.target_directory }}
-          
-          mvn dependency:copy-dependencies \
-            -DoutputDirectory=${{ inputs.target_directory }} \
-            -Dmdep.useRepositoryLayout=true \
-            -Dmdep.copyPom=true \
-            -DincludeScope=test
-          
-          echo "✅ Test dependencies downloaded"
-          
-          # Use go-offline to ensure everything is downloaded
+          # Use target directory as Maven local repository
           mvn dependency:go-offline \
             -Dmaven.repo.local=${{ inputs.target_directory }}
           
-          echo "✅ All dependencies and plugins downloaded with repository structure"
+          echo "✅ Complete offline Maven repository downloaded"
       
       - name: Install 7zip
         run: sudo apt-get update && sudo apt-get install -y p7zip-full
       
-      - name: Create 7zip archive
+      - name: Create and split 7zip archive
         run: |
+          echo "📦 Creating compressed archive..."
           7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on \
+            -v95m \
             maven-dependencies.7z \
             ${{ inputs.target_directory }}
           
-          archive_size=$(du -h maven-dependencies.7z | cut -f1)
-          echo "📦 Archive created: maven-dependencies.7z (${archive_size})"
+          echo "✅ Archive created and split into chunks"
           
-          mv maven-dependencies.7z ${{ inputs.target_directory }}/
+          # Move all archive parts to target directory
+          mv maven-dependencies.7z.* ${{ inputs.target_directory }}/ 2>/dev/null || true
+          mv maven-dependencies.7z ${{ inputs.target_directory }}/ 2>/dev/null || true
+          
+          # List created files
+          echo "📋 Archive parts:"
+          ls -lh ${{ inputs.target_directory }}/maven-dependencies.7z*
       
       - name: Remove unzipped files
         run: |
           echo "🗑️ Removing unzipped dependency files..."
-          find ${{ inputs.target_directory }} -type f ! -name "*.7z" -delete
-          find ${{ inputs.target_directory }} -type d -empty -delete
-          echo "✅ Unzipped files removed, only archive remains"
+          find ${{ inputs.target_directory }} -mindepth 1 \
+            ! -name "maven-dependencies.7z*" \
+            -exec rm -rf {} +
+          
+          echo "✅ Unzipped files removed, only archive parts remain"
       
-      - name: Commit dependencies
+      - name: Create extraction instructions
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add ${{ inputs.target_directory }}
-          git diff --staged --quiet || git commit -m "Add Maven dependencies archive [skip ci]"
-          git push
+          cat > ${{ inputs.target_directory }}/README.md << 'EOF'
+          # Maven Dependencies Archive
+                  
