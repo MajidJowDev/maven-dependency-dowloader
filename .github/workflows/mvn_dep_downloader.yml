@@ -41,18 +41,37 @@ jobs:
       - name: Create dependencies directory
         run: mkdir -p ${{ inputs.target_directory }}
       
-      - name: Download dependencies with repository structure
+      - name: Download all dependencies and plugins
         run: |
-          echo "📥 Downloading dependencies with Maven repository layout..."
+          echo "📥 Downloading all dependencies, plugins, and metadata..."
           
+          # Download all project dependencies with repository structure
           mvn dependency:copy-dependencies \
             -DoutputDirectory=${{ inputs.target_directory }} \
             -Dmdep.useRepositoryLayout=true \
             -Dmdep.copyPom=true \
             -Dmdep.addParentPoms=true \
-            -DincludeScope=runtime
+            -DincludeScope=compile
           
-          echo "✅ Dependencies downloaded with repository structure"
+          echo "✅ Project dependencies downloaded"
+          
+          # Download all plugins and their dependencies
+          mvn dependency:resolve-plugins \
+            -Dmdep.outputDirectory=${{ inputs.target_directory }}
+          
+          mvn dependency:copy-dependencies \
+            -DoutputDirectory=${{ inputs.target_directory }} \
+            -Dmdep.useRepositoryLayout=true \
+            -Dmdep.copyPom=true \
+            -DincludeScope=test
+          
+          echo "✅ Test dependencies downloaded"
+          
+          # Use go-offline to ensure everything is downloaded
+          mvn dependency:go-offline \
+            -Dmaven.repo.local=${{ inputs.target_directory }}
+          
+          echo "✅ All dependencies and plugins downloaded with repository structure"
       
       - name: Install 7zip
         run: sudo apt-get update && sudo apt-get install -y p7zip-full
