@@ -108,13 +108,4 @@ jobs:
           - Split 7zip archive files (`maven-dependencies.7z.001`, `.002`, etc.)
           - All dependencies, plugins, and metadata needed for offline builds
 
-          ## How to Extract
-
-          ### Prerequisites
-
-          Install 7zip:
-
-          - Linux/macOS:
-```bash
-sudo apt-get install p7zip-full
-
+        
