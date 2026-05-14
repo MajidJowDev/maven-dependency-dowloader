@@ -75,9 +75,11 @@ jobs:
       - name: Remove unzipped files
         run: |
           echo "🗑️ Removing unzipped dependency files..."
+          
+          # Find and store paths, then delete
           find ${{ inputs.target_directory }} -mindepth 1 \
             ! -name "maven-dependencies.7z*" \
-            -exec rm -rf {} +
+            -print0 | xargs -0 rm -rf
           
           echo "✅ Unzipped files removed, only archive parts remain"
       
@@ -85,4 +87,5 @@ jobs:
         run: |
           cat > ${{ inputs.target_directory }}/README.md << 'EOF'
           # Maven Dependencies Archive
-                  
+          
+  
