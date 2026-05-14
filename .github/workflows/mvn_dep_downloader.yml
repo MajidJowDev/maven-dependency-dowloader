@@ -84,12 +84,10 @@ jobs:
 
       - name: Remove unzipped files and copy archive
         run: |
-          echo "🗑️ Removing original dependency files..."
+          echo "🗑️ Removing original dependency files..."      
 
-          find "${{ inputs.target_directory }}" \
-            -mindepth 1 \
-            ! -name '.gitkeep' \
-            -exec rm -rf {} +
+          rm -rf "${{ inputs.target_directory }}"
+          mkdir -p "${{ inputs.target_directory }}"
 
           cp /tmp/maven-archive/* "${{ inputs.target_directory }}/"
 
