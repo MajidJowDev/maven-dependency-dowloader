@@ -16,7 +16,7 @@ on:
 jobs:
   download-dependencies:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,25 +34,29 @@ jobs:
 
       - name: Create target directory
         run: |
-          mkdir -p ${{ inputs.target_directory }}
+          mkdir -p "${{ inputs.target_directory }}"
 
       - name: Create pom.xml from input
         run: |
-          echo "${{ inputs.pom_content }}" > pom.xml
+          cat > pom.xml <<'POMEOF'
+          ${{ inputs.pom_content }}
+          POMEOF
+
           echo "✅ pom.xml created"
-          cat pom.xml
+          echo "📄 Content preview:"
+          head -n 10 pom.xml
 
       - name: Download all dependencies and plugins
         run: |
           echo "📥 Downloading complete offline Maven repository..."
-          
+
           mvn dependency:go-offline \
-            -Dmaven.repo.local=${{ inputs.target_directory }}
-          
+            -Dmaven.repo.local="${{ inputs.target_directory }}"
+
           echo "✅ Download complete"
-          
+
           echo "📊 Repository size:"
-          du -sh ${{ inputs.target_directory }}
+          du -sh "${{ inputs.target_directory }}"
 
       - name: Create and split 7zip archive
         run: |
@@ -60,8 +64,8 @@ jobs:
 
           mkdir -p /tmp/maven-archive
 
-          # Archive the contents of the target directory, not the directory itself
-          cd ${{ inputs.target_directory }}
+          cd "${{ inputs.target_directory }}"
+
           7z a \
             -t7z \
             -m0=lzma2 \
@@ -82,19 +86,20 @@ jobs:
         run: |
           echo "🗑️ Removing original dependency files..."
 
-          # Remove all contents of target directory
-          rm -rf ${{ inputs.target_directory }}/*
+          find "${{ inputs.target_directory }}" \
+            -mindepth 1 \
+            ! -name '.gitkeep' \
+            -exec rm -rf {} +
 
-          # Copy archive parts back
-          cp /tmp/maven-archive/* ${{ inputs.target_directory }}/
+          cp /tmp/maven-archive/* "${{ inputs.target_directory }}/"
 
           echo "✅ Only archive parts remain"
 
-          ls -lh ${{ inputs.target_directory }}
+          ls -lh "${{ inputs.target_directory }}"
 
       - name: Create extraction guide
         run: |
-          cat > ${{ inputs.target_directory }}/README.md << 'EOF'
+          cat > "${{ inputs.target_directory }}/README.md" <<'EOF'
           # Maven Dependencies Archive
 
           This directory contains a complete offline Maven repository archive.
@@ -106,9 +111,10 @@ jobs:
           ## How to Extract
 
           ### Prerequisites
-          Install 7zip:
-          - **Linux/macOS**: `sudo apt-get install p7zip-full` or `brew install p7zip`
-          - **Windows**: Download from https://www.7-zip.org/
 
-          ### Extraction
+          Install 7zip:
+
+          - Linux/macOS:
+```bash
+sudo apt-get install p7zip-full
 
