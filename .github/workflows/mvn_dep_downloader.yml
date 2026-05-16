@@ -41,38 +41,42 @@ jobs:
       - name: Create dependencies directory
         run: mkdir -p ${{ inputs.target_directory }}
 
-      - name: Download all dependencies and plugins
+            - name: Download all dependencies and plugins
         run: |
           echo "📥 Downloading all dependencies, plugins, and metadata..."
           
-          # Download all project dependencies with repository structure
+          # First: Download everything Maven needs (online mode)
+          mvn dependency:go-offline -Dmaven.repo.local=${{ inputs.target_directory }}
+          
+          echo "✅ Core dependencies downloaded"
+          
+          # Then: Copy dependencies with proper layout
           mvn dependency:copy-dependencies \
             -DoutputDirectory=${{ inputs.target_directory }} \
             -Dmdep.useRepositoryLayout=true \
             -Dmdep.copyPom=true \
             -Dmdep.addParentPoms=true \
-            -DincludeScope=compile
+            -DincludeScope=compile \
+            -Dmaven.repo.local=${{ inputs.target_directory }}
           
-          echo "✅ Project dependencies downloaded"
+          echo "✅ Compile dependencies organized"
           
-          # Download all plugins and their dependencies
-          mvn dependency:resolve-plugins \
-            -Dmdep.outputDirectory=${{ inputs.target_directory }}
-          
+          # Download test dependencies
           mvn dependency:copy-dependencies \
             -DoutputDirectory=${{ inputs.target_directory }} \
             -Dmdep.useRepositoryLayout=true \
             -Dmdep.copyPom=true \
-            -DincludeScope=test
-          
-          echo "✅ Test dependencies downloaded"
-          
-          # Use go-offline to ensure everything is downloaded
-          mvn dependency:go-offline \
+            -DincludeScope=test \
             -Dmaven.repo.local=${{ inputs.target_directory }}
           
-          echo "✅ All dependencies and plugins downloaded with repository structure"
-      
+          echo "✅ Test dependencies organized"
+          
+          # Resolve plugins
+          mvn dependency:resolve-plugins \
+            -Dmaven.repo.local=${{ inputs.target_directory }}
+          
+          echo "✅ All dependencies and plugins downloaded"
+
       - name: Install 7zip
         run: sudo apt-get update && sudo apt-get install -y p7zip-full
 
