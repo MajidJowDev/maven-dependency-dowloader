@@ -8,8 +8,8 @@ on:
         required: true
         type: string
       target_directory:
-        description: 'Directory to store dependencies (e.g., .github/dependencies)'
-        required: true
+        description: 'Directory to store dependencies'
+        required: false
         default: '.github/dependencies'
         type: string
 
@@ -17,93 +17,94 @@ jobs:
   download-dependencies:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Create temporary pom.xml
+        run: |
+          cat > pom.xml << 'EOF'
+          ${{ inputs.pom_content }}
+          EOF
+      
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install 7zip
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y p7zip-full
-
-      - name: Create target directory
-        run: |
-          mkdir -p "${{ inputs.target_directory }}"
-
-      - name: Create pom.xml from input
-        run: |
-          cat > pom.xml <<'POMEOF'
-          ${{ inputs.pom_content }}
-          POMEOF
-
-          echo "✅ pom.xml created"
-          echo "📄 Content preview:"
-          head -n 10 pom.xml
+      - name: Create dependencies directory
+        run: mkdir -p ${{ inputs.target_directory }}
 
       - name: Download all dependencies and plugins
         run: |
-          echo "📥 Downloading complete offline Maven repository..."
-
+          echo "📥 Downloading all dependencies, plugins, and metadata..."
+          
+          # Download all project dependencies with repository structure
+          mvn dependency:copy-dependencies \
+            -DoutputDirectory=${{ inputs.target_directory }} \
+            -Dmdep.useRepositoryLayout=true \
+            -Dmdep.copyPom=true \
+            -Dmdep.addParentPoms=true \
+            -DincludeScope=compile
+          
+          echo "✅ Project dependencies downloaded"
+          
+          # Download all plugins and their dependencies
+          mvn dependency:resolve-plugins \
+            -Dmdep.outputDirectory=${{ inputs.target_directory }}
+          
+          mvn dependency:copy-dependencies \
+            -DoutputDirectory=${{ inputs.target_directory }} \
+            -Dmdep.useRepositoryLayout=true \
+            -Dmdep.copyPom=true \
+            -DincludeScope=test
+          
+          echo "✅ Test dependencies downloaded"
+          
+          # Use go-offline to ensure everything is downloaded
           mvn dependency:go-offline \
-            -Dmaven.repo.local="${{ inputs.target_directory }}"
+            -Dmaven.repo.local=${{ inputs.target_directory }}
+          
+          echo "✅ All dependencies and plugins downloaded with repository structure"
+      
+      - name: Install 7zip
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full
 
-          echo "✅ Download complete"
-
-          echo "📊 Repository size:"
-          du -sh "${{ inputs.target_directory }}"
-
-      - name: Create and split 7zip archive
+      - name: Create 7zip archive with splitting
         run: |
-          echo "📦 Creating compressed archive..."
-
-          mkdir -p /tmp/maven-archive
-
-          cd "${{ inputs.target_directory }}"
-
-          7z a \
-            -t7z \
-            -m0=lzma2 \
-            -mx=9 \
-            -mfb=64 \
-            -md=32m \
-            -ms=on \
-            -v95m \
-            /tmp/maven-archive/maven-dependencies.7z \
-            .
-
-          echo "✅ Archive created"
-
-          echo "📋 Archive parts:"
-          ls -lh /tmp/maven-archive/
-
-      - name: Remove unzipped files and copy archive
+          echo "📦 Creating 7zip archive with 90MB volume splitting..."
+          
+          7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on \
+            -v90m \
+            maven-dependencies.7z \
+            ${{ inputs.target_directory }}
+          
+          echo "✅ Archive created with volume splitting"
+          
+          # Move all archive parts to target directory
+          mv maven-dependencies.7z* ${{ inputs.target_directory }}/
+          
+          # List all created parts with sizes
+          echo "📋 Archive parts created:"
+          ls -lh ${{ inputs.target_directory }}/maven-dependencies.7z* | awk '{print $9, "(" $5 ")"}'
+      
+      - name: Remove unzipped files
         run: |
-          echo "🗑️ Removing original dependency files..."      
-
-          rm -rf "${{ inputs.target_directory }}"
-          mkdir -p "${{ inputs.target_directory }}"
-
-          cp /tmp/maven-archive/* "${{ inputs.target_directory }}/"
-
-          echo "✅ Only archive parts remain"
-
-          ls -lh "${{ inputs.target_directory }}"
-
-      - name: Create extraction guide
+          echo "🗑️ Removing unzipped dependency files..."
+          find ${{ inputs.target_directory }} -type f ! -name "*.7z*" -delete
+          find ${{ inputs.target_directory }} -type d -empty -delete
+          echo "✅ Unzipped files removed, only archive parts remain"
+      
+      - name: Commit dependencies
         run: |
-          cat > "${{ inputs.target_directory }}/README.md" <<'EOF'
-          # Maven Dependencies Archive
-
-          This directory contains a complete offline Maven repository archive.
-
-          ## Contents
-          - Split 7zip archive files (`maven-dependencies.7z.001`, `.002`, etc.)
-          - All dependencies, plugins, and metadata needed for offline builds
-
-        
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add ${{ inputs.target_directory }}
+          git diff --staged --quiet || git commit -m "Add Maven dependencies archive [skip ci]"
+          git push
