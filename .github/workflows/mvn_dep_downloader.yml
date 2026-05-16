@@ -1,4 +1,4 @@
-name: Maven Dependency Downloader
+name: Maven Dependencies Downloader
 
 on:
   workflow_dispatch:
@@ -8,40 +8,41 @@ on:
         required: true
         type: string
       target_directory:
-        description: 'Directory to store dependencies'
-        required: false
-        default: '.github/dependencies'
+        description: 'Target directory for dependencies'
+        required: true
+        default: 'maven-dependencies'
         type: string
 
 jobs:
   download-dependencies:
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create temporary pom.xml
         run: |
           cat > pom.xml << 'EOF'
           ${{ inputs.pom_content }}
           EOF
-      
+          echo "✅ pom.xml created"
+          cat pom.xml
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
+          java-version: '17'
 
       - name: Create dependencies directory
-        run: mkdir -p ${{ inputs.target_directory }}
+        run: |
+          mkdir -p ${{ inputs.target_directory }}
+          echo "📁 Created directory: ${{ inputs.target_directory }}"
 
-            - name: Download all dependencies and plugins
+      - name: Download all dependencies and plugins
         run: |
           echo "📥 Downloading all dependencies, plugins, and metadata..."
           
@@ -78,37 +79,34 @@ jobs:
           echo "✅ All dependencies and plugins downloaded"
 
       - name: Install 7zip
-        run: sudo apt-get update && sudo apt-get install -y p7zip-full
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+          echo "✅ 7zip installed"
 
       - name: Create 7zip archive with splitting
         run: |
           echo "📦 Creating 7zip archive with 90MB volume splitting..."
+          7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on -v90m maven-dependencies.7z ${{ inputs.target_directory }}
           
-          7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on \
-            -v90m \
-            maven-dependencies.7z \
-            ${{ inputs.target_directory }}
-          
-          echo "✅ Archive created with volume splitting"
-          
-          # Move all archive parts to target directory
+          echo "✅ Archive created, moving to target directory..."
           mv maven-dependencies.7z* ${{ inputs.target_directory }}/
           
-          # List all created parts with sizes
-          echo "📋 Archive parts created:"
-          ls -lh ${{ inputs.target_directory }}/maven-dependencies.7z* | awk '{print $9, "(" $5 ")"}'
-      
+          echo "📊 Archive parts created:"
+          ls -lh ${{ inputs.target_directory }}/maven-dependencies.7z* | awk '{print $9, $5}'
+
       - name: Remove unzipped files
         run: |
-          echo "🗑️ Removing unzipped dependency files..."
+          echo "🧹 Cleaning up uncompressed files..."
           find ${{ inputs.target_directory }} -type f ! -name "*.7z*" -delete
           find ${{ inputs.target_directory }} -type d -empty -delete
-          echo "✅ Unzipped files removed, only archive parts remain"
-      
+          echo "✅ Cleanup complete"
+
       - name: Commit dependencies
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add ${{ inputs.target_directory }}
-          git diff --staged --quiet || git commit -m "Add Maven dependencies archive [skip ci]"
+          git diff --staged --quiet || git commit -m "Add Maven dependencies archive for ${{ inputs.target_directory }}"
           git push
+          echo "✅ Dependencies committed and pushed"
